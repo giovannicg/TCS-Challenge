@@ -18,20 +18,29 @@ Microservicio DevOps simple que cumple con los requisitos del desafío TCS. Cons
 
 ```
 TCS-Challenge/
-├── app/                    # Aplicación
+├── app/                      # Aplicación
 │   ├── src/
-│   │   ├── main.py        # FastAPI app
-│   │   └── auth.py        # Autenticación
+│   │   ├── main.py           # FastAPI app
+│   │   └── auth.py           # Autenticación
 │   ├── test/
-│   │   └── test_devops.py # Pruebas
-│   ├── Dockerfile         # Container
-│   ├── requirements.txt   # Dependencias
-│   └── config.env         # Configuración
-├── infra/                 # Infraestructura
-│   └── terraform/
-│       ├── main.tf
-│       └── variables.tf
-└── .github/workflows/     # CI/CD
+│   │   └── test_devops.py    # Pruebas
+│   ├── Dockerfile            # Container
+│   └── requirements.txt      # Dependencias
+├── infra/
+│   └── terraform/            # Infraestructura (modular)
+│       ├── modules/
+│       │   └── app_environment/
+│       │       ├── main.tf       # AKS, ACR, KeyVault, APIM
+│       │       ├── variables.tf
+│       │       └── outputs.tf
+│       └── environments/
+│           ├── test/
+│           │   ├── main.tf
+│           │   └── test.tfvars
+│           └── prod/
+│               ├── main.tf
+│               └── prod.tfvars
+└── .github/workflows/       # CI/CD
     └── ci-cd.yml
 ```
 
@@ -43,49 +52,64 @@ git clone https://github.com/tu-usuario/TCS-Challenge.git
 cd TCS-Challenge
 ```
 
-### 2. Configurar secretos
+### 2. Backend de Terraform (opcional pero recomendado)
+Crear Storage Account y Container si vas a usar backend remoto (ajusta nombres si cambiaste):
 ```bash
-cd infra/terraform
-# Copiar archivo de ejemplo
-cp secrets.tfvars.example secrets.tfvars
-# Editar con tus valores secretos
-nano secrets.tfvars
+az group create -n rg-terraform-state -l "East US"
+az storage account create -g rg-terraform-state -n stterraformstate211025 -l "East US" --sku Standard_LRS
+az storage container create --name stterraformstate211025 --account-name stterraformstate211025
 ```
 
-### 3. Desplegar infraestructura
+### 3. Desplegar infraestructura (entornos)
+
+Test (1 nodo):
 ```bash
+cd infra/terraform/environments/test
 terraform init
-terraform apply -var-file="secrets.tfvars"
+terraform plan -var-file=test.tfvars
+terraform apply -var-file=test.tfvars
 ```
 
-### 3. Configurar variables
+Prod (por límites de vCPU, recomendado 1 nodo; si tienes cuota, usa 2):
+```bash
+cd infra/terraform/environments/prod
+terraform init
+terraform plan -var-file=prod.tfvars
+terraform apply -var-file=prod.tfvars
+```
+
+Notas importantes:
+- La suscripción usada tiene límites bajos de vCPU e IPs públicas. Si recibes errores de cuota (vCPU o Public IP), reduce `aks_node_count` o usa SKUs más pequeños (ej. `Standard_B2s`).
+- APIM se crea con `sku_name = "Consumption_0"` por defecto para minimizar costos.
+
+### 4. Construir y publicar imagen (local)
 ```bash
 cd app
-# Editar config.env con tus valores
-nano config.env
+docker build -t devops-app:latest .
+
+# ACR del entorno (desde outputs)
+# Test:
+TEST_ACR=$(terraform -chdir=../../infra/terraform/environments/test output -raw acr_login_server)
+docker tag devops-app:latest $TEST_ACR/devops-app:latest
+az acr login --name ${TEST_ACR%%.*}
+docker push $TEST_ACR/devops-app:latest
+
+# Prod (similar):
+PROD_ACR=$(terraform -chdir=../../infra/terraform/environments/prod output -raw acr_login_server)
+docker tag devops-app:latest $PROD_ACR/devops-app:latest
+az acr login --name ${PROD_ACR%%.*}
+docker push $PROD_ACR/devops-app:latest
 ```
 
-### 4. Construir y desplegar aplicación
+### 5. Conectar a AKS
 ```bash
-# Construir imagen
-docker build -t devops-microservice .
+# Test
+az aks get-credentials -g $(terraform -chdir=infra/terraform/environments/test output -raw resource_group_name) \
+  -n $(terraform -chdir=infra/terraform/environments/test output -raw aks_cluster_name) --overwrite-existing
 
-# Obtener ACR login server
-ACR_SERVER=$(terraform output -raw container_registry_login_server)
-
-# Tag para ACR
-docker tag devops-microservice:latest $ACR_SERVER/devops-microservice:latest
-
-# Push a ACR
-az acr login --name $ACR_SERVER
-docker push $ACR_SERVER/devops-microservice:latest
-
-# Conectar a AKS
-az aks get-credentials --resource-group devops-microservice-rg-devel --name devops-devel-aks
-
-# Desplegar secrets y aplicación
-kubectl apply -f app/k8s/secret.yaml
-kubectl apply -f app/k8s/deployment.yaml
+# Prod
+az aks get-credentials -g $(terraform -chdir=infra/terraform/environments/prod output -raw resource_group_name) \
+  -n $(terraform -chdir=infra/terraform/environments/prod output -raw aks_cluster_name) --overwrite-existing
 ```
 
 ## Uso del API
@@ -133,9 +157,9 @@ pytest test/
 ### Manejo de Secretos
 
 **Archivos que NO se suben a Git:**
-- `secrets.tfvars` - Secretos de Terraform
-- `config.env` - Variables de la aplicación
-- `terraform.tfvars` - Variables personalizadas
+- `*.tfvars` con secretos (ej. `test.tfvars`, `prod.tfvars`)
+- `config.env` (si lo usas localmente)
+- `terraform.tfstate*` (estado local)
 
 **Archivos de ejemplo incluidos:**
 - `secrets.tfvars.example` - Plantilla para secretos
@@ -143,27 +167,18 @@ pytest test/
 
 **Comandos seguros:**
 ```bash
-# Opción 1: Usar archivo de secretos
-terraform apply -var-file="secrets.tfvars"
+# Usar archivo por entorno
+terraform apply -var-file=test.tfvars
+terraform apply -var-file=prod.tfvars
 
-# Opción 2: Usar variables de entorno
-export TF_VAR_jwt_secret="tu-secreto"
-terraform apply
-
-# Opción 3: Usar archivo de variables personalizado
-terraform apply -var-file="terraform.tfvars"
+# O usar variables de entorno
+export TF_VAR_jwt_secret_value="tu-secreto"
+export TF_VAR_api_key_value="tu-api-key"
+terraform apply -var-file=test.tfvars
 ```
 
 **Para la aplicación:**
-```bash
-# Configurar variables de entorno
-export ALLOWED_API_KEY="tu-api-key"
-export JWT_SECRET="tu-jwt-secret"
-export AZURE_KEY_VAULT_URL="https://tu-keyvault.vault.azure.net/"
-
-# O usar archivo config.env
-source app/config.env
-```
+Los secretos (`api-key`, `jwt-secret`) se almacenan en Azure Key Vault y se inyectan vía Workload Identity en AKS. No es necesario commitear secretos.
 
 ## Autor
 
