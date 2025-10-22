@@ -4,7 +4,7 @@
 .terraform/
 .terraform.lock.hcl
 terraform.tfvars
-secrets.tfvars
+*.tfvars
 
 # Environment files
 .env
