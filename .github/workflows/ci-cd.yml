@@ -123,7 +123,7 @@ jobs:
         az aks get-credentials --resource-group ${{ secrets.RG_NAME }} --name ${{ secrets.AKS_CLUSTER }} --overwrite-existing
 
     - name: "6. Actualizar manifiestos de Kustomize"
-      working-directory: ./k8s/overlays/${{ env.K8S_OVERLAY }}
+      working-directory: ./app/k8s/overlays/${{ env.K8S_OVERLAY }}
       run: |
         ACR_LOGIN_SERVER=${{ needs.build_and_push.outputs.acr_login_server }}
         IMAGE_TAG=${{ needs.build_and_push.outputs.image_tag }}
@@ -144,4 +144,4 @@ jobs:
 
     - name: "7. Desplegar aplicación con Kustomize"
       run: |
-        kustomize build ./k8s/overlays/${{ env.K8S_OVERLAY }} | kubectl apply -f -
+        kustomize build ./app/k8s/overlays/${{ env.K8S_OVERLAY }} | kubectl apply -f -
