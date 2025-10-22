@@ -45,45 +45,40 @@ jobs:
     name: "Build y Push a ACR"
     runs-on: ubuntu-latest
     needs: test
-
     environment:
       name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'test' }}
 
     outputs:
+      # Ya solo necesitamos pasar el IMAGE_TAG
       image_tag: ${{ steps.vars.outputs.IMAGE_TAG }}
-      acr_login_server: ${{ steps.vars.outputs.ACR_LOGIN_SERVER }}
 
     steps:
     - name: "1. Checkout de código"
       uses: actions/checkout@v4
 
-    - name: "2. Definir Tag y Servidor ACR"
+    - name: "2. Definir Tag" # (Paso simplificado)
       id: vars
       run: |
-        # El nombre de ACR ahora viene de los secretos del entorno
-        ACR_NAME=${{ secrets.ACR_NAME }}
-
-        echo "ACR_LOGIN_SERVER=$ACR_NAME.azurecr.io" >> $GITHUB_OUTPUT
-
         IMAGE_TAG=${{ github.sha }}
         echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
 
     - name: "3. Iniciar sesión en Azure"
       uses: azure/login@v1
       with:
-        creds: ${{ secrets.AZURE_CREDENTIAL }}
+        creds: ${{ secrets.AZURE_CREDENTIALS }} # Corregido con S
 
     - name: "4. Iniciar sesión en ACR"
-      run: az acr login --name ${{ secrets.ACR_NAME }}
+      # Lee el nombre completo del secreto
+      run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
 
     - name: "5. Construir y Subir imagen a ACR"
       run: |
-        ACR_LOGIN_SERVER=${{ steps.vars.outputs.acr_login_server }}
-        IMAGE_TAG=${{ steps.vars.outputs.image_tag }}
+        # Lee el login server DIRECTAMENTE de los secretos
+        ACR_LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }}
+        # Lee el tag de los outputs del paso 'vars'
+        IMAGE_TAG=${{ steps.vars.outputs.IMAGE_TAG }}
 
-        # Añade './app' para apuntar al directorio correcto
         docker build -t $ACR_LOGIN_SERVER/${{ env.APP_NAME }}:$IMAGE_TAG ./app
-
         docker push $ACR_LOGIN_SERVER/${{ env.APP_NAME }}:$IMAGE_TAG
 
   # --- 3. ETAPA DE DESPLIEGUE (Actualizada) ---
@@ -118,8 +113,10 @@ jobs:
     - name: "6. Actualizar manifiestos de Kustomize"
       working-directory: ./app/k8s/overlays/${{ env.K8S_OVERLAY }}
       run: |
-        ACR_LOGIN_SERVER=${{ needs.build_and_push.outputs.ACR_LOGIN_SERVER }}
-        IMAGE_TAG=${{ needs.build_and_push.outputs.IMAGE_TAG }}
+        # Lee el login server DIRECTAMENTE de los secretos
+        ACR_LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }}
+        # Lee el tag de los outputs del job anterior
+        IMAGE_TAG=${{ needs.build_and_push.outputs.image_tag }}
 
         KV_URL=${{ secrets.KV_URL }}
         CLIENT_ID=${{ secrets.CLIENT_ID }}
