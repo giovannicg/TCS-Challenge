@@ -14,7 +14,7 @@ env:
   APP_NAME: "devops-app" # Nombre de tu app
 
 jobs:
-  # --- 1. ETAPA DE TEST (Sin cambios) ---
+  # --- 1. ETAPA DE TEST ---
   test:
     name: "Test y Lint"
     runs-on: ubuntu-latest
@@ -40,7 +40,7 @@ jobs:
       run: pytest
       continue-on-error: true
 
-  # --- 2. ETAPA DE BUILD (Actualizada) ---
+  # --- 2. ETAPA DE BUILD ---
   build_and_push:
     name: "Build y Push a ACR"
     runs-on: ubuntu-latest
@@ -49,14 +49,13 @@ jobs:
       name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'test' }}
 
     outputs:
-      # Ya solo necesitamos pasar el IMAGE_TAG
       image_tag: ${{ steps.vars.outputs.IMAGE_TAG }}
 
     steps:
     - name: "1. Checkout de código"
       uses: actions/checkout@v4
 
-    - name: "2. Definir Tag" # (Paso simplificado)
+    - name: "2. Definir Tag"
       id: vars
       run: |
         IMAGE_TAG=${{ github.sha }}
@@ -65,7 +64,7 @@ jobs:
     - name: "3. Iniciar sesión en Azure"
       uses: azure/login@v1
       with:
-        creds: ${{ secrets.AZURE_CREDENTIAL }} # Corregido con S
+        creds: ${{ secrets.AZURE_CREDENTIAL }}
 
     - name: "4. Iniciar sesión en ACR"
       # Lee el nombre completo del secreto
@@ -81,7 +80,7 @@ jobs:
         docker build -t $ACR_LOGIN_SERVER/${{ env.APP_NAME }}:$IMAGE_TAG ./app
         docker push $ACR_LOGIN_SERVER/${{ env.APP_NAME }}:$IMAGE_TAG
 
-  # --- 3. ETAPA DE DESPLIEGUE (Actualizada) ---
+  # --- 3. ETAPA DE DESPLIEGUE ---
   deploy:
     name: "Desplegar en Kubernetes (AKS)"
     runs-on: ubuntu-latest
