@@ -18,6 +18,9 @@ jobs:
   test:
     name: "Test y Lint"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./app
     steps:
     - name: "1. Checkout de código"
       uses: actions/checkout@v4
