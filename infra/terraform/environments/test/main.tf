@@ -24,34 +24,3 @@ module "app_environment" {
   kubernetes_namespace            = var.kubernetes_namespace
   kubernetes_service_account_name = var.kubernetes_service_account_name
 }
-
-# Declaración de variables que se cargarán desde el .tfvars
-variable "env_name" {
-  type = string
-}
-
-variable "aks_node_count" {
-  type = number
-}
-
-variable "aks_vm_sku" {
-  type = string
-}
-
-variable "api_key_value" {
-  type      = string
-  sensitive = true
-}
-
-variable "jwt_secret_value" {
-  type      = string
-  sensitive = true
-}
-
-variable "kubernetes_namespace" {
-  type = string
-}
-
-variable "kubernetes_service_account_name" {
-  type = string
-}
