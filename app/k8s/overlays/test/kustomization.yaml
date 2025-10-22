@@ -1,0 +1,33 @@
+# k8s/overlays/test/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Apunta a la base
+resources:
+- ../../base
+
+# 1. Cambia el namespace
+namespace: test
+
+# 2. Define la imagen de Docker para este entorno
+images:
+- name: placeholder.acr.io/app # La imagen de la base
+  newName: acrtestdevopsapp.azurecr.io/devops-app # El ACR de TEST
+  newTag: "latest" # El pipeline puede parchear este tag
+
+# 3. Parches
+patches:
+- target:
+    kind: ServiceAccount
+    name: devops-app-sa
+  patch: |-
+    - op: replace
+      path: /metadata/annotations/azure.workload.identity~1client-id
+      value: "CLIENT_ID_DE_TEST" # El pipeline reemplaza esto
+- target:
+    kind: Deployment
+    name: devops-app
+  patch: |-
+    - op: replace
+      path: /spec/template/spec/containers/0/env/0/value
+      value: "https://kv-test-devops-app.vault.azure.net" # URL del KV de TEST
