@@ -50,8 +50,8 @@ jobs:
       name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'test' }}
 
     outputs:
-      image_tag: ${{ steps.vars.outputs.image_tag }}
-      acr_login_server: ${{ steps.vars.outputs.acr_login_server }}
+      image_tag: ${{ steps.vars.outputs.IMAGE_TAG }}
+      acr_login_server: ${{ steps.vars.outputs.ACR_LOGIN_SERVER }}
 
     steps:
     - name: "1. Checkout de código"
@@ -94,28 +94,12 @@ jobs:
 
     environment:
       name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'test' }}
+    env:
+      K8S_OVERLAY: ${{ github.ref == 'refs/heads/main' && 'prod' || 'test' }}
 
     steps:
     - name: "1. Checkout de código"
       uses: actions/checkout@v4
-
-    - name: "2. Definir Tag y Servidor ACR"
-      id: vars
-      run: |
-        # --- NUEVA VALIDACIÓN ---
-        # Falla el pipeline si el secreto está vacío
-        if [ -z "${{ secrets.ACR_NAME }}" ]; then
-          echo "::error:: El secreto 'ACR_NAME' no está configurado en el Entorno de GitHub."
-          exit 1
-        fi
-        echo "Secreto 'ACR_NAME' encontrado: ${{ secrets.ACR_NAME }}"
-        # -------------------------
-
-        ACR_NAME=${{ secrets.ACR_NAME }}
-        echo "ACR_LOGIN_SERVER=$ACR_NAME.azurecr.io" >> $GITHUB_OUTPUT
-
-        IMAGE_TAG=${{ github.sha }}
-        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
 
     - name: "3. Instalar Kustomize"
       run: |
