@@ -104,11 +104,12 @@ resource "azurerm_kubernetes_cluster" "aks" {
   dns_prefix          = "${var.project_name}-${local.env_suffix}"
 
   default_node_pool {
-    name       = "default"
-    node_count = 2
-    vm_size    = "Standard_B2s"
-    vnet_subnet_id = azurerm_subnet.aks_subnet.id
-  }
+    name            = "default"
+    node_count      = 2
+    vm_size         = "Standard_E2as_v5"
+    vnet_subnet_id  = azurerm_subnet.aks_subnet.id
+    os_disk_type    = "Managed"
+}
 
   identity {
     type = "SystemAssigned"
