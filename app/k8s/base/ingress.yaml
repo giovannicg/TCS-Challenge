@@ -8,6 +8,7 @@ metadata:
     # Asume que tienes un Ingress Controller (ej. NGINX)
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
+  ingressClassName: nginx
   rules:
   - http:
       paths:
