@@ -18,7 +18,7 @@ spec:
       - name: devops-app
         image: placeholder.acr.io/app:latest # El pipeline debe reemplazar esto
         ports:
-        - containerPort: 80
+        - containerPort: 8080
         env:
         - name: AZURE_KEY_VAULT_URL
           # EL PIPELINE DEBE REEMPLAZAR ESTO
@@ -34,12 +34,12 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 80
+            port: 8080
           initialDelaySeconds: 15
           periodSeconds: 20
         readinessProbe:
           httpGet:
             path: /health
-            port: 80
+            port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
