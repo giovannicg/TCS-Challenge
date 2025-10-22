@@ -118,8 +118,8 @@ jobs:
     - name: "6. Actualizar manifiestos de Kustomize"
       working-directory: ./app/k8s/overlays/${{ env.K8S_OVERLAY }}
       run: |
-        ACR_LOGIN_SERVER=${{ needs.build_and_push.outputs.acr_login_server }}
-        IMAGE_TAG=${{ needs.build_and_push.outputs.image_tag }}
+        ACR_LOGIN_SERVER=${{ needs.build_and_push.outputs.ACR_LOGIN_SERVER }}
+        IMAGE_TAG=${{ needs.build_and_push.outputs.IMAGE_TAG }}
 
         KV_URL=${{ secrets.KV_URL }}
         CLIENT_ID=${{ secrets.CLIENT_ID }}
