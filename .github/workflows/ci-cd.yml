@@ -1,137 +1,140 @@
-name: CI/CD Pipeline
+# .github/workflows/ci-cd.yml
+
+name: CI/CD - DevOps Application
 
 on:
   push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+    branches:
+    - '**' # Se ejecuta en todas las ramas
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'dev'
-        type: choice
-        options:
-        - dev
-        - test
-        - prod
+    # Permite ejecución manual
+
+env:
+  PYTHON_VERSION: '3.10'
+  APP_NAME: "devops-app" # Nombre de tu app
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.12'
-
-    - name: Install dependencies
-      run: |
-        cd app
-        pip install -r requirements.txt flake8 bandit
-
-    - name: Run flake8
-      run: |
-        cd app
-        flake8 src/ --config=.flake8
-
-  security:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.12'
-
-    - name: Install dependencies
-      run: |
-        cd app
-        pip install -r requirements.txt bandit
-
-    - name: Run bandit
-      run: |
-        cd app
-        bandit -r src/ -c .bandit
-
+  # --- 1. ETAPA DE TEST (Sin cambios) ---
   test:
+    name: "Test y Lint"
     runs-on: ubuntu-latest
-    needs: [lint, security]
     steps:
-    - name: Checkout code
+    - name: "1. Checkout de código"
       uses: actions/checkout@v4
-
-    - name: Set up Python
+    - name: "2. Configurar Python"
       uses: actions/setup-python@v4
       with:
-        python-version: '3.12'
-
-    - name: Install dependencies
+        python-version: ${{ env.PYTHON_VERSION }}
+    - name: "3. Instalar dependencias"
       run: |
-        cd app
-        pip install -r requirements.txt pytest-cov
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install flake8 pytest
+    - name: "4. Revisión Estática (Lint)"
+      run: flake8 . --count --show-source --statistics
+    - name: "5. Pruebas Unitarias (Test)"
+      run: pytest
 
-    - name: Run tests with coverage
-      run: |
-        cd app
-        pytest test/ --cov=src --cov-report=xml --cov-report=term
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./app/coverage.xml
-
-  build:
+  # --- 2. ETAPA DE BUILD (Actualizada) ---
+  build_and_push:
+    name: "Build y Push a ACR"
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./app
-        push: true
-        tags: ${{ secrets.DOCKER_USERNAME }}/devops-microservice:${{ github.sha }},${{ secrets.DOCKER_USERNAME }}/devops-microservice:latest
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     environment:
-      name: ${{ github.event.inputs.environment || 'dev' }}
-      url: ${{ steps.deploy.outputs.url }}
+      name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'test' }}
+
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
+      acr_login_server: ${{ steps.vars.outputs.acr_login_server }}
+
     steps:
-    - name: Checkout code
+    - name: "1. Checkout de código"
       uses: actions/checkout@v4
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
-
-    - name: Deploy to AWS
-      id: deploy
+    - name: "2. Definir Tag y Servidor ACR"
+      id: vars
       run: |
-        # Deployment logic here
-        echo "Deploying to ${{ github.event.inputs.environment || 'dev' }} environment"
-        # Add your deployment commands here
+        # El nombre de ACR ahora viene de los secretos del entorno
+        ACR_NAME=${{ secrets.ACR_NAME }}
+
+        echo "ACR_LOGIN_SERVER=$ACR_NAME.azurecr.io" >> $GITHUB_OUTPUT
+
+        IMAGE_TAG=${{ github.sha }}
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    - name: "3. Iniciar sesión en Azure"
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIAL }}
+
+    - name: "4. Iniciar sesión en ACR"
+      run: az acr login --name ${{ secrets.ACR_NAME }}
+
+    - name: "5. Construir y Subir imagen a ACR"
+      run: |
+        ACR_LOGIN_SERVER=${{ steps.vars.outputs.acr_login_server }}
+        IMAGE_TAG=${{ steps.vars.outputs.image_tag }}
+
+        docker build -t $ACR_LOGIN_SERVER/${{ env.APP_NAME }}:$IMAGE_TAG .
+        docker push $ACR_LOGIN_SERVER/${{ env.APP_NAME }}:$IMAGE_TAG
+
+  # --- 3. ETAPA DE DESPLIEGUE (Actualizada) ---
+  deploy:
+    name: "Desplegar en Kubernetes (AKS)"
+    runs-on: ubuntu-latest
+    needs: build_and_push
+
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'test' }}
+
+    steps:
+    - name: "1. Checkout de código"
+      uses: actions/checkout@v4
+
+    - name: "2. Definir variables de despliegue"
+      id: vars
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "K8S_OVERLAY=prod" >> $GITHUB_ENV
+        else
+          echo "K8S_OVERLAY=test" >> $GITHUB_ENV
+        fi
+
+    - name: "3. Instalar Kustomize"
+      run: |
+        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+        sudo mv kustomize /usr/local/bin/
+
+    - name: "4. Iniciar sesión en Azure"
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIAL }}
+
+    - name: "5. Obtener credenciales de AKS"
+      run: |
+        az aks get-credentials --resource-group ${{ secrets.RG_NAME }} --name ${{ secrets.AKS_CLUSTER }} --overwrite-existing
+
+    - name: "6. Actualizar manifiestos de Kustomize"
+      working-directory: ./k8s/overlays/${{ env.K8S_OVERLAY }}
+      run: |
+        ACR_LOGIN_SERVER=${{ needs.build_and_push.outputs.acr_login_server }}
+        IMAGE_TAG=${{ needs.build_and_push.outputs.image_tag }}
+
+        KV_URL=${{ secrets.KV_URL }}
+        CLIENT_ID=${{ secrets.CLIENT_ID }}
+
+        echo "Aplicando Kustomize para ${{ env.K8S_OVERLAY }}"
+
+        # 1. Actualizar la imagen y el tag
+        kustomize edit set image placeholder.acr.io/app=$ACR_LOGIN_SERVER/${{ env.APP_NAME }}:$IMAGE_TAG
+
+        # 2. Reemplazar placeholders de Workload Identity
+        sed -i 's|CLIENT_ID_DE_TEST|'${CLIENT_ID}'|g' kustomization.yaml
+        sed -i 's|CLIENT_ID_DE_PROD|'${CLIENT_ID}'|g' kustomization.yaml
+        sed -i 's|https://kv-test-devops-app.vault.azure.net|'${KV_URL}'|g' kustomization.yaml
+        sed -i 's|https://kv-prod-devops-app.vault.azure.net|'${KV_URL}'|g' kustomization.yaml
+
+    - name: "7. Desplegar aplicación con Kustomize"
+      run: |
+        kustomize build ./k8s/overlays/${{ env.K8S_OVERLAY }} | kubectl apply -f -

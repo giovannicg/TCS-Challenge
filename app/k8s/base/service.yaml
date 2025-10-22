@@ -1,0 +1,13 @@
+# k8s/base/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: devops-app-svc
+  namespace: app-base
+spec:
+  selector:
+    app: devops-app
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80

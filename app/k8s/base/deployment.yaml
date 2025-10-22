@@ -1,0 +1,45 @@
+# k8s/base/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-app
+  namespace: app-base
+spec:
+  selector:
+    matchLabels:
+      app: devops-app
+  template:
+    metadata:
+      labels:
+        app: devops-app
+    spec:
+      serviceAccountName: devops-app-sa # Coincide con el ServiceAccount
+      containers:
+      - name: devops-app
+        image: placeholder.acr.io/app:latest # El pipeline debe reemplazar esto
+        ports:
+        - containerPort: 80
+        env:
+        - name: AZURE_KEY_VAULT_URL
+          # EL PIPELINE DEBE REEMPLAZAR ESTO
+          value: "https://placeholder-kv.vault.azure.net"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+        # Health check (¡Tu app lo tiene!)
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
