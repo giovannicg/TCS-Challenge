@@ -65,7 +65,7 @@ jobs:
     - name: "3. Iniciar sesión en Azure"
       uses: azure/login@v1
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }} # Corregido con S
+        creds: ${{ secrets.AZURE_CREDENTIAL }} # Corregido con S
 
     - name: "4. Iniciar sesión en ACR"
       # Lee el nombre completo del secreto
