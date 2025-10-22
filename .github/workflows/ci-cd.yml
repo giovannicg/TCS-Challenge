@@ -2,14 +2,24 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+        - dev
+        - test
+        - prod
 
 jobs:
-  build-and-test:
+  lint:
     runs-on: ubuntu-latest
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -22,14 +32,106 @@ jobs:
     - name: Install dependencies
       run: |
         cd app
-        pip install -r requirements.txt
+        pip install -r requirements.txt flake8 bandit
 
-    - name: Run tests
+    - name: Run flake8
       run: |
         cd app
-        pytest test/
+        flake8 src/ --config=.flake8
 
-    - name: Build Docker image
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
       run: |
         cd app
-        docker build -t devops-microservice .
+        pip install -r requirements.txt bandit
+
+    - name: Run bandit
+      run: |
+        cd app
+        bandit -r src/ -c .bandit
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [lint, security]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        cd app
+        pip install -r requirements.txt pytest-cov
+
+    - name: Run tests with coverage
+      run: |
+        cd app
+        pytest test/ --cov=src --cov-report=xml --cov-report=term
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./app/coverage.xml
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./app
+        push: true
+        tags: ${{ secrets.DOCKER_USERNAME }}/devops-microservice:${{ github.sha }},${{ secrets.DOCKER_USERNAME }}/devops-microservice:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Deploy to AWS
+      id: deploy
+      run: |
+        # Deployment logic here
+        echo "Deploying to ${{ github.event.inputs.environment || 'dev' }} environment"
+        # Add your deployment commands here

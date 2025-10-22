@@ -1,8 +1,0 @@
-# Copy this file to terraform.tfvars and update the values
-
-resource_group_name = "devops-microservice-rg"
-location           = "East US"
-project_name       = "devops"
-environment        = "production"
-jwt_secret         = "your-super-secret-jwt-key-change-in-production"
-node_count         = 2
